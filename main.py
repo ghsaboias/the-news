@@ -50,27 +50,32 @@ def send_telegram_message(message: str):
         print(f"Error sending Telegram message: {e}")
 
 def ask_llm(results):
-    response = llm_client.chat.completions.create(
-        model="llama-3.1-70b-versatile",
-        messages=[
-            {"role": "system", "content": """
-            You are a precise and efficient news summarizer. Given a list of news results in JSON format, create a concise summary.
+    try:
+        response = llm_client.chat.completions.create(
+            model="llama-3.1-8b-instant",
+            messages=[
+                {"role": "system", "content": """
+                You are a precise and efficient news summarizer. Given a list of news results in JSON format, create a concise summary.
 
-            Guidelines:
-            - Focus on hard data, facts, and objective information.
-            - Maintain neutrality; avoid bias, opinions, or editorializing.
-            - Be concise and direct; omit unnecessary details or repetition.
-            - Do not include stock recommendations unless directly related to major news.
-            - Avoid generalized disclaimers or evasive language.
-            - Do not include double asterisks or single asterisks in the summary.
-            - Include most important URLs in the summary.
-            - Do NOT include "Here's a summary of the news" or similar introductory phrases.
-            """},
-            {"role": "user", "content": f"Results (JSON):\n{json.dumps(results, indent=2)}\n\n."},
-        ],
-        max_tokens=8000
-    )
-    return response.choices[0].message.content
+                Guidelines:
+                - Focus on hard data, facts, objective information, dates and places.
+                - Maintain neutrality; avoid bias, opinions, or editorializing.
+                - Be concise and direct; omit unnecessary details or repetition.
+                - Do not include stock recommendations unless directly related to major news.
+                - Avoid generalized disclaimers or evasive language.
+                - Do not include double asterisks or single asterisks in the summary.
+                - Include most important URLs in the summary.
+                - Do NOT include "Here's a summary of the news" or similar introductory phrases.
+                - Add date to each news item if possible.
+                """},
+                {"role": "user", "content": f"Results (JSON):\n{json.dumps(results, indent=2)}\n\n."},
+            ],
+            max_tokens=8000
+        )
+        return response.choices[0].message.content
+    except Exception as e:
+        send_telegram_message(f"Error asking LLM: {e}")
+        return ""
 
 def search_brave_news(topic):
     results = []
@@ -107,8 +112,6 @@ def search_brave_news(topic):
                     f.write('\n')
                 # print(f"Saved {formatted_result}")
                 time.sleep(1)
-        else:
-            print(f"No results found for topic: {topic}")
         return results
     except Exception as e:
         print(f"Error searching Brave News: {e}")
@@ -125,41 +128,21 @@ def handle_incoming_messages():
                 last_update_id = update['update_id'] + 1
                 message = update.get('message', {}).get('text', '')
                 if message:
-                    print(f"Received message: {message}")
                     summary = process_topic(message)
-                    send_telegram_message(summary, telegram_chat_id)
             time.sleep(1)
         except Exception as e:
             print(f"Error handling incoming messages: {e}")
 
 def process_topic(topic):
-    if isinstance(topic, list):
-        results = search_brave_news(topic)
-    else:
-        lower_topic = topic.lower()
-        if lower_topic in REGION_TOPICS:
-            topics = REGION_TOPICS[lower_topic]
-        else:
-            topics = [topic]
-        results = search_brave_news(topics)
+    results = search_brave_news(topic)
+    if not results:
+        send_telegram_message(f"No results found for topic: {topic}")
     summary = ask_llm(results)
-    # urls = [result["url"] for result in results]
-    # get_screenshot(urls)
+    send_telegram_message(summary)
     return summary
 
-def send_telegram_message(message: str, chat_id: int):
-    url = f"https://api.telegram.org/bot{os.getenv('TELEGRAM_BOT_TOKEN')}/sendMessage"
-    payload = {
-        "chat_id": chat_id,
-        "text": message
-    }
-    try:
-        print(f"Sending message to Telegram: {message}")
-        requests.post(url, json=payload)
-    except Exception as e:
-        print(f"Error sending Telegram message: {e}")
-
 def main():
+    send_telegram_message("TheNews is running")
     with open("results.txt", "w") as f:
         f.write("")
     handle_incoming_messages()
