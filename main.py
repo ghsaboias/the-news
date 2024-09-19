@@ -16,17 +16,12 @@ crawler = WebCrawler()
 
 crawler.warmup()
 
-REGION_TOPICS = {
-    "middle east": [
-        "Saudi Arabia", "United Arab Emirates", "Israel", "Iran",
-        "Iraq", "Jordan", "Lebanon", "Syria", "Turkey", "Yemen",
-        "Oman", "Kuwait", "Bahrain", "Qatar"
-    ],
-    "europe": [
-        "Germany", "France", "United Kingdom", "Italy", "Spain",
-        "Poland", "Netherlands", "Sweden", "Norway", "Switzerland",
-        "Belgium", "Austria", "Denmark", "Finland", "Ireland"
-    ],
+FRESHNESS_MAP = {
+    'day': 'pd',
+    'week': 'pw',
+    'month': 'pm',
+    'year': 'py',
+    'all': 'all'
 }
 
 # def get_screenshot(urls):
@@ -64,7 +59,7 @@ def ask_llm(results):
                 - Be concise and direct; omit unnecessary details or repetition.
                 - Avoid generalized disclaimers or evasive language.
                 - Do not include double asterisks or single asterisks in the summary.
-                - Include source URLs in the summary.
+                - Include source links in the summary!
                 - Add date to each news item if possible.
                 """},
                 {"role": "user", "content": f"Results:\n{json.dumps(results, indent=2)}\n\n."},
@@ -76,23 +71,23 @@ def ask_llm(results):
         send_telegram_message(f"Error asking LLM: {e}")
         return ""
 
-def search_brave_news(topic):
+def search_brave_news(topic, freshness='pd'):
     results = []
     try:
         params = {
             "q": topic,
-            "count": 3,
+            "count": 5,
             "country": "all",
             "search_lang": "en",
             "spellcheck": 1,
             "extra_snippets": True,
-            "freshness": "pd"
+            "freshness": freshness
         }
         headers = {
             "Accept": "application/json",
             "Accept-Encoding": "gzip",
             "X-Subscription-Token": os.getenv("BRAVE_API_KEY")
-            }
+        }
         response = requests.get("https://api.search.brave.com/res/v1/news/search", headers=headers, params=params)
         brave_results = response.json()
         if 'results' in brave_results:
@@ -109,7 +104,6 @@ def search_brave_news(topic):
                 with open("results.json", "a") as f:
                     json.dump(formatted_result, f)
                     f.write('\n')
-                # print(f"Saved {formatted_result}")
                 time.sleep(1)
         return results
     except Exception as e:
@@ -127,21 +121,36 @@ def handle_incoming_messages():
                 last_update_id = update['update_id'] + 1
                 message = update.get('message', {}).get('text', '')
                 if message:
-                    summary = process_topic(message)
+                    process_topic(message)
             time.sleep(1)
         except Exception as e:
             print(f"Error handling incoming messages: {e}")
 
-def process_topic(topic):
-    results = search_brave_news(topic)
+def process_topic(message: str):
+    parts = message.strip().split("/")
+    if len(parts) >= 2:
+        try:
+            period = parts[-1].lower()
+            freshness = FRESHNESS_MAP.get(period, 'pd')
+            topic = parts[0]
+            send_telegram_message(f"Searching Brave News for {topic} and freshness {freshness}")
+        except ValueError:
+            freshness = 'pd'
+            topic = message
+    else:
+        freshness = 'pd'
+        topic = message
+
+    results = search_brave_news(topic, freshness)
     if not results:
         send_telegram_message(f"No results found for topic: {topic}")
-    summary = ask_llm(results)
-    send_telegram_message(summary)
+    else:
+        summary = ask_llm(results)
+        send_telegram_message(summary)
     return summary
 
 def main():
-    send_telegram_message("TheNews is running")
+    send_telegram_message("TheNews is running!")
     with open("results.txt", "w") as f:
         f.write("")
     handle_incoming_messages()
