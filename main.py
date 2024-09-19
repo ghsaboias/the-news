@@ -55,20 +55,19 @@ def ask_llm(results):
             model="llama-3.1-8b-instant",
             messages=[
                 {"role": "system", "content": """
-                You are a precise and efficient news summarizer. Given a list of news results in JSON format, create a concise summary.
+                You are a precise and efficient news summarizer. Given a list of news results, create a concise summary.
 
                 Guidelines:
+                - Do NOT start with "Here's a summary of the news" or similar introductory phrases.
                 - Focus on hard data, facts, objective information, dates and places.
                 - Maintain neutrality; avoid bias, opinions, or editorializing.
                 - Be concise and direct; omit unnecessary details or repetition.
-                - Do not include stock recommendations unless directly related to major news.
                 - Avoid generalized disclaimers or evasive language.
                 - Do not include double asterisks or single asterisks in the summary.
-                - Include most important URLs in the summary.
-                - Do NOT include "Here's a summary of the news" or similar introductory phrases.
+                - Include source URLs in the summary.
                 - Add date to each news item if possible.
                 """},
-                {"role": "user", "content": f"Results (JSON):\n{json.dumps(results, indent=2)}\n\n."},
+                {"role": "user", "content": f"Results:\n{json.dumps(results, indent=2)}\n\n."},
             ],
             max_tokens=8000
         )
