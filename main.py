@@ -6,7 +6,7 @@ from groq import Groq
 import time
 from brave import Brave
 from datetime import datetime
-# import base64
+import base64
 import json
 
 llm_client = Groq(api_key=os.getenv("GROQ_API_KEY"))
@@ -16,21 +16,13 @@ crawler = WebCrawler()
 
 crawler.warmup()
 
-FRESHNESS_MAP = {
-    'day': 'pd',
-    'week': 'pw',
-    'month': 'pm',
-    'year': 'py',
-    'all': 'all'
-}
+def get_screenshot(urls):
+    for url in urls:
+        result = crawler.run(url=url, screenshot=True)
 
-# def get_screenshot(urls):
-#     for url in urls:
-#         result = crawler.run(url=url, screenshot=True)
-
-#         with open(f"{url.split('/')[-1]}.png", "wb") as f:
-#             print(result)
-#             f.write(base64.b64decode(result.screenshot))
+        with open(f"{url.split('/')[-1]}.png", "wb") as f:
+            print(result)
+            f.write(base64.b64decode(result.screenshot))
 
 def send_telegram_message(message: str):
     url = f"https://api.telegram.org/bot{os.getenv('TELEGRAM_BOT_TOKEN')}/sendMessage"
@@ -121,39 +113,60 @@ def handle_incoming_messages():
                 last_update_id = update['update_id'] + 1
                 message = update.get('message', {}).get('text', '')
                 if message:
-                    process_topic(message)
+                    if message.lower() == '/help':
+                        send_help_message()
+                    else:
+                        process_topic(message)
             time.sleep(1)
         except Exception as e:
             print(f"Error handling incoming messages: {e}")
 
-def process_topic(message: str):
-    parts = message.strip().split("/")
-    if len(parts) >= 2:
-        try:
-            period = parts[-1].lower()
-            freshness = FRESHNESS_MAP.get(period, 'pd')
-            topic = parts[0]
-            send_telegram_message(f"Searching Brave News for {topic} and freshness {freshness}")
-        except ValueError:
-            freshness = 'pd'
-            topic = message
-    else:
-        freshness = 'pd'
-        topic = message
+def send_help_message():
+    help_text = """
+Welcome to TheNews bot! Here's how to use it:
 
-    results = search_brave_news(topic, freshness)
-    if not results:
-        send_telegram_message(f"No results found for topic: {topic}")
-    else:
+1. Simply send any topic or search query, and I'll fetch the latest news for you.
+2. I'll search for news from the past day, week, month, year, or all time until I find results.
+3. You'll receive a concise summary of the news articles found.
+
+Example: Send "climate change" to get the latest news about climate change.
+
+For any issues or feedback, please contact the bot administrator.
+    """
+    send_telegram_message(help_text)
+
+def process_topic(message: str):
+    freshness_levels = ['pd', 'pw', 'pm', 'py', 'all']
+    topic = message
+    results = []
+
+    for freshness in freshness_levels:
+        results = search_brave_news(topic, freshness)
+        if results:
+            break
+
+    if results:
         summary = ask_llm(results)
         send_telegram_message(summary)
-    return summary
+        return summary
+    else:
+        no_results_message = f"No results found for topic: {topic}"
+        send_telegram_message(no_results_message)
+        return no_results_message
 
 def main():
-    send_telegram_message("TheNews is running!")
+    welcome_message = """
+TheNews bot is now running!
+
+To get started, simply send any topic you're interested in, and I'll fetch the latest news for you.
+For more information on how to use the bot, send /help.
+
+Happy news reading!
+    """
+    send_telegram_message(welcome_message)
     with open("results.txt", "w") as f:
         f.write("")
     handle_incoming_messages()
-    
+
 if __name__ == "__main__":
     main()
